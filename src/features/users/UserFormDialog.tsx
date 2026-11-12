@@ -1,3 +1,5 @@
+import { useId } from 'react'
+import { userErrorMessage } from '../../api/users.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { SelectField, TextField } from '../../components/ui/FormField.tsx'
@@ -21,14 +23,16 @@ export function UserFormDialog({ user, onSubmit, onClose }: UserFormDialogProps)
     validate: validateUser,
     toPayload: toUserInput,
     onSubmit,
+    errorMessage: userErrorMessage,
   })
+  const titleId = useId()
 
   const isEdit = user !== null
 
   return (
-    <Modal labelledBy="user-form-title" dismissible={!submitting} onClose={onClose}>
+    <Modal labelledBy={titleId} dismissible={!submitting} onClose={onClose}>
       <ModalHeader
-        titleId="user-form-title"
+        titleId={titleId}
         icon={isEdit ? 'edit' : 'personAdd'}
         iconTone={isEdit ? 'neutral' : 'primary'}
         title={isEdit ? `Editar usuario #${user.id}` : 'Nuevo usuario'}
@@ -103,11 +107,9 @@ export function UserFormDialog({ user, onSubmit, onClose }: UserFormDialogProps)
                 label="Edad"
                 icon="calendar"
                 required
-                type="number"
                 inputMode="numeric"
-                min={1}
-                max={120}
-                step={1}
+                pattern="[0-9]*"
+                maxLength={3}
                 placeholder="ej. 28"
                 hint="Número entero entre 1 y 120."
               />

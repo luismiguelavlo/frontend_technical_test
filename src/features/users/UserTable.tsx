@@ -1,7 +1,7 @@
 import { IconButton, IconLink } from '../../components/ui/Button.tsx'
-import { DataTable, type Column } from '../../components/ui/DataTable.tsx'
+import { DataTable, type Column, type SortState } from '../../components/ui/DataTable.tsx'
 import { Skeleton } from '../../components/ui/Skeleton.tsx'
-import { fullName, type User } from '../../types/user.ts'
+import { fullName, type SortKey, type User } from '../../types/user.ts'
 import { paths } from '../../utils/routes.ts'
 import { GenderBadge } from './GenderBadge.tsx'
 import { UserAvatar } from './UserAvatar.tsx'
@@ -9,8 +9,18 @@ import { UserAvatar } from './UserAvatar.tsx'
 interface UserTableProps {
   users: User[]
   loading?: boolean
+  /** Server-side sort; omit to render plain headers (e.g. skeleton). */
+  sort?: SortState<SortKey>
+  onSort?: (key: SortKey) => void
   onEdit: (user: User) => void
   onDelete: (user: User) => void
+}
+
+const noop = () => {}
+
+/** Loading placeholder with the table's exact layout (no rows, no actions). */
+export function UserTableSkeleton() {
+  return <UserTable users={[]} loading onEdit={noop} onDelete={noop} />
 }
 
 /** Picks a width for skeleton row `i`, so placeholder rows don't look identical. */
@@ -18,11 +28,12 @@ function vary(i: number, widths: string[]): string {
   return widths[i % widths.length]
 }
 
-export function UserTable({ users, loading = false, onEdit, onDelete }: UserTableProps) {
-  const columns: Column<User>[] = [
+export function UserTable({ users, loading = false, sort, onSort, onEdit, onDelete }: UserTableProps) {
+  const columns: Column<User, SortKey>[] = [
     {
       key: 'id',
       header: 'ID',
+      sortKey: 'id',
       className: 'w-16 pl-space-md pr-space-sm',
       cellClassName: 'text-label-sm text-outline',
       cell: (u) => `#${u.id}`,
@@ -31,6 +42,8 @@ export function UserTable({ users, loading = false, onEdit, onDelete }: UserTabl
     {
       key: 'name',
       header: 'Nombre completo',
+      sortKey: 'first_name',
+      sortLabel: 'Nombre',
       cell: (u) => (
         <div className="flex items-center gap-space-sm">
           <UserAvatar user={u} />
@@ -52,6 +65,7 @@ export function UserTable({ users, loading = false, onEdit, onDelete }: UserTabl
     {
       key: 'email',
       header: 'Email',
+      sortKey: 'email',
       cellClassName: 'text-on-surface-variant',
       cell: (u) => (
         <a href={`mailto:${u.email}`} className="underline-offset-2 transition-colors hover:text-primary hover:underline">
@@ -83,6 +97,7 @@ export function UserTable({ users, loading = false, onEdit, onDelete }: UserTabl
     {
       key: 'age',
       header: 'Edad',
+      sortKey: 'age',
       cellClassName: 'text-label-md whitespace-nowrap',
       cell: (u) => (
         <>
@@ -112,5 +127,14 @@ export function UserTable({ users, loading = false, onEdit, onDelete }: UserTabl
     },
   ]
 
-  return <DataTable columns={columns} rows={users} rowKey={(u) => u.id} loading={loading} />
+  return (
+    <DataTable
+      columns={columns}
+      rows={users}
+      rowKey={(u) => u.id}
+      loading={loading}
+      sort={sort}
+      onSort={onSort}
+    />
+  )
 }

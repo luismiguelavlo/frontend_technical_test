@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
 import { Card, CardHeader } from '../../components/ui/Card.tsx'
 import { DescriptionItem, DescriptionItemSkeleton, DescriptionList } from '../../components/ui/DescriptionList.tsx'
@@ -5,14 +6,16 @@ import { Skeleton } from '../../components/ui/Skeleton.tsx'
 import { GENDER_LABELS, type User } from '../../types/user.ts'
 
 const TITLE = 'Datos personales y de contacto'
-const DESCRIPTION = 'Campos del registro USER.'
+const DESCRIPTION = 'Información de identificación y contacto del usuario.'
 
-/** Every USER field as label/value pairs, with an edit shortcut. */
+/** Every user field as label/value pairs, with an edit shortcut. */
 export function UserPersonalData({ user, onEdit }: { user: User; onEdit: () => void }) {
+  const titleId = useId()
+
   return (
-    <Card aria-labelledby="personal-data-title" className="gap-space-md p-space-lg">
+    <Card aria-labelledby={titleId} className="gap-space-md p-space-lg">
       <CardHeader
-        titleId="personal-data-title"
+        titleId={titleId}
         icon="person"
         title={TITLE}
         description={DESCRIPTION}

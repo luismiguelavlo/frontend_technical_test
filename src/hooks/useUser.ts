@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { ApiError, getErrorMessage, isAbortError, isConflictError } from '../api/client.ts'
-import { deleteUser, getUser, updateUser } from '../api/users.ts'
+import { isAbortError, isConflictError, isNotFoundError as isNotFound } from '../api/client.ts'
+import { deleteUser, getUser, updateUser, userErrorMessage } from '../api/users.ts'
 import type { User, UserInput } from '../types/user.ts'
 
 type UserState =
@@ -10,10 +10,6 @@ type UserState =
   | { status: 'success'; user: User }
 
 export type UserStatus = UserState['status']
-
-function isNotFound(error: unknown) {
-  return error instanceof ApiError && error.status === 404
-}
 
 /**
  * Server state for one user (GET /users/{id}): 404 is its own state, not an error.
@@ -31,7 +27,7 @@ export function useUser(id: number) {
       .then((user) => setState({ status: 'success', user }))
       .catch((error: unknown) => {
         if (isAbortError(error)) return
-        setState(isNotFound(error) ? { status: 'notFound' } : { status: 'error', error: getErrorMessage(error) })
+        setState(isNotFound(error) ? { status: 'notFound' } : { status: 'error', error: userErrorMessage(error) })
       })
 
     return () => controller.abort()

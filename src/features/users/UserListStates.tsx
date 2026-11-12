@@ -2,9 +2,7 @@ import { Button } from '../../components/ui/Button.tsx'
 import { PaginationSkeleton } from '../../components/ui/Pagination.tsx'
 import { StatePanel } from '../../components/ui/StatePanel.tsx'
 import { UserFiltersSkeleton } from './UserFilters.tsx'
-import { UserTable } from './UserTable.tsx'
-
-const noop = () => {}
+import { UserTableSkeleton } from './UserTable.tsx'
 
 /** Whole list placeholder: filters + table rows + pagination. */
 export function UserListSkeleton() {
@@ -14,7 +12,7 @@ export function UserListSkeleton() {
         Cargando usuarios…
       </span>
       <UserFiltersSkeleton />
-      <UserTable users={[]} loading onEdit={noop} onDelete={noop} />
+      <UserTableSkeleton />
       <PaginationSkeleton />
     </>
   )

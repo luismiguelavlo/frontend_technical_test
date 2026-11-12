@@ -1,16 +1,24 @@
 import { IconButton } from './Button.tsx'
 import { Select } from './Select.tsx'
 import { Skeleton } from './Skeleton.tsx'
-import { PAGE_SIZES, getPageItems } from '../../utils/pagination.ts'
+import { PAGE_SIZES } from '../../utils/pagination.ts'
 
 interface PaginationProps {
+  /** 1-based page number. */
   page: number
   pageSize: number
-  total: number
-  totalPages: number
+  /** Rows on the current page. */
+  count: number
+  /** Total matches, if known. */
+  total: number | null
+  hasPrevious: boolean
+  hasNext: boolean
+  /** Disables the controls (e.g. while a page is loading). */
+  disabled?: boolean
   /** Plural noun for the count text, e.g. "usuarios". */
   itemLabel?: string
-  onPageChange: (page: number) => void
+  onPrevious: () => void
+  onNext: () => void
   onPageSizeChange: (size: number) => void
 }
 
@@ -25,37 +33,51 @@ export function PaginationSkeleton() {
         <Skeleton className="h-6 w-24" tone="muted" />
       </div>
       <div className="flex items-center gap-1">
-        {Array.from({ length: 5 }, (_, i) => (
-          <Skeleton key={i} className="size-8" />
-        ))}
+        <Skeleton className="size-8" />
+        <Skeleton className="h-4 w-16" tone="muted" />
+        <Skeleton className="size-8" />
       </div>
     </div>
   )
 }
 
+/**
+ * Previous/next pagination for cursor (keyset) lists: there are no page
+ * numbers to jump to, only the neighbours of the current page.
+ */
 export function Pagination({
   page,
   pageSize,
+  count,
   total,
-  totalPages,
+  hasPrevious,
+  hasNext,
+  disabled = false,
   itemLabel = 'registros',
-  onPageChange,
+  onPrevious,
+  onNext,
   onPageSizeChange,
 }: PaginationProps) {
-  const from = (page - 1) * pageSize + 1
-  const to = Math.min(page * pageSize, total)
+  const from = count === 0 ? 0 : (page - 1) * pageSize + 1
+  const to = from + count - (count === 0 ? 0 : 1)
 
   return (
     <div className="flex flex-col items-center justify-between gap-space-md p-space-md sm:flex-row">
       <div className="flex items-center gap-space-md">
-        <span className="text-body-sm text-on-surface-variant">
+        <span aria-live="polite" className="text-body-sm text-on-surface-variant">
           Mostrando <span className="font-semibold text-on-surface">{fmt.format(from)}</span> a{' '}
-          <span className="font-semibold text-on-surface">{fmt.format(to)}</span> de{' '}
-          <span className="font-semibold text-on-surface">{fmt.format(total)}</span> {itemLabel}
+          <span className="font-semibold text-on-surface">{fmt.format(to)}</span>
+          {total !== null && (
+            <>
+              {' '}
+              de <span className="font-semibold text-on-surface">{fmt.format(total)}</span>
+            </>
+          )}{' '}
+          {itemLabel}
         </span>
         <Select
           size="sm"
-          aria-label="Usuarios por página"
+          aria-label={`${itemLabel} por página`}
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
         >
@@ -67,40 +89,17 @@ export function Pagination({
         </Select>
       </div>
 
-      <nav aria-label="Paginación de resultados" className="inline-flex items-center gap-1">
+      <nav aria-label="Paginación de resultados" className="inline-flex items-center gap-space-sm">
         <IconButton
           icon="chevronLeft"
           label="Página anterior"
-          disabled={page <= 1}
-          onClick={() => onPageChange(page - 1)}
+          disabled={disabled || !hasPrevious}
+          onClick={onPrevious}
         />
-        {getPageItems(page, totalPages).map((item) =>
-          typeof item === 'number' ? (
-            <button
-              key={item}
-              type="button"
-              aria-current={item === page ? 'page' : undefined}
-              onClick={() => onPageChange(item)}
-              className={`size-8 rounded text-label-sm transition-colors ${
-                item === page
-                  ? 'bg-primary font-semibold text-on-primary shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-container-low'
-              }`}
-            >
-              {item}
-            </button>
-          ) : (
-            <span key={item} className="px-1 text-label-sm text-on-surface-variant">
-              …
-            </span>
-          ),
-        )}
-        <IconButton
-          icon="chevronRight"
-          label="Página siguiente"
-          disabled={page >= totalPages}
-          onClick={() => onPageChange(page + 1)}
-        />
+        <span aria-current="page" className="min-w-16 text-center text-label-sm text-on-surface">
+          Página {fmt.format(page)}
+        </span>
+        <IconButton icon="chevronRight" label="Página siguiente" disabled={disabled || !hasNext} onClick={onNext} />
       </nav>
     </div>
   )

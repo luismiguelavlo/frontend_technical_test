@@ -2,8 +2,7 @@ import { SearchInput } from '../../components/ui/SearchInput.tsx'
 import { Select } from '../../components/ui/Select.tsx'
 import { Skeleton } from '../../components/ui/Skeleton.tsx'
 import { Toolbar } from '../../components/ui/Toolbar.tsx'
-import { GENDERS, GENDER_LABELS } from '../../types/user.ts'
-import type { GenderFilter } from '../../utils/userFilters.ts'
+import { GENDERS, GENDER_LABELS, type GenderFilter } from '../../types/user.ts'
 
 /** Placeholder with the same layout as <UserFilters> while data loads. */
 export function UserFiltersSkeleton() {
@@ -42,8 +41,8 @@ export function UserFilters({ search, gender, onSearchChange, onGenderChange }: 
       <SearchInput
         value={search}
         onValueChange={onSearchChange}
-        label="Buscar usuarios por nombre o email"
-        placeholder="Buscar por nombre o email..."
+        label="Buscar usuarios por nombre, apellido o email"
+        placeholder="Buscar por nombre, apellido o email…"
       />
     </Toolbar>
   )

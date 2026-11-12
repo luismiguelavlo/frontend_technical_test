@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { getErrorMessage, isConflictError } from '../../api/client.ts'
+import { userErrorMessage } from '../../api/users.ts'
 import { AppLayout } from '../../components/layout/AppLayout.tsx'
 import { Breadcrumbs } from '../../components/ui/Breadcrumbs.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { Icon } from '../../components/ui/Icon.tsx'
-import type { Notify } from '../../hooks/useToasts.ts'
+import { useNotify } from '../../hooks/useToasts.ts'
 import { useUser, type UserStatus } from '../../hooks/useUser.ts'
-import type { ListStatus } from '../../hooks/useUsers.ts'
+import type { ApiStatus } from '../../types/api.ts'
 import type { User, UserInput } from '../../types/user.ts'
 import { navigate, paths } from '../../utils/routes.ts'
 import { DeleteUserDialog } from './DeleteUserDialog.tsx'
@@ -18,7 +18,7 @@ import { UserProfileHeader } from './UserProfileHeader.tsx'
 import { UserRecordMeta } from './UserRecordMeta.tsx'
 
 /** A 404 still means the API answered. */
-const API_STATUS: Record<UserStatus, ListStatus> = {
+const API_STATUS: Record<UserStatus, ApiStatus> = {
   loading: 'loading',
   error: 'error',
   notFound: 'success',
@@ -27,27 +27,19 @@ const API_STATUS: Record<UserStatus, ListStatus> = {
 
 type Dialog = 'edit' | 'delete' | null
 
-interface UserDetailPageProps {
-  id: number
-  notify: Notify
-}
-
 /** GET /users/{id}: profile + edit (PUT) and delete (DELETE) actions. */
-export function UserDetailPage({ id, notify }: UserDetailPageProps) {
+export function UserDetailPage({ id }: { id: number }) {
+  const notify = useNotify()
   const { state, reload, update, remove } = useUser(id)
   const [dialog, setDialog] = useState<Dialog>(null)
   const user = state.status === 'success' ? state.user : null
 
+  /**
+   * Errors propagate to the form, which stays open with the user's input. On 412
+   * the page reloads the current copy, so the next submit uses its version.
+   */
   async function handleSave(input: UserInput, version: number) {
-    try {
-      await update(input, version)
-    } catch (error) {
-      // 412: the form was built from an old copy; the page now shows the current one.
-      if (!isConflictError(error)) throw error
-      notify('error', getErrorMessage(error))
-      setDialog(null)
-      return
-    }
+    await update(input, version)
     notify('success', 'Usuario actualizado')
     setDialog(null)
   }
@@ -58,7 +50,7 @@ export function UserDetailPage({ id, notify }: UserDetailPageProps) {
       notify('success', 'Usuario eliminado')
       navigate(paths.users())
     } catch (error) {
-      notify('error', getErrorMessage(error))
+      notify('error', userErrorMessage(error))
       setDialog(null)
     }
   }
@@ -72,7 +64,7 @@ export function UserDetailPage({ id, notify }: UserDetailPageProps) {
       case 'error':
         return <UserDetailError message={state.error} onRetry={reload} />
       case 'success':
-        return <UserDetailContent user={state.user} notify={notify} onEdit={() => setDialog('edit')} />
+        return <UserDetailContent user={state.user} onEdit={() => setDialog('edit')} />
     }
   }
 
@@ -119,13 +111,8 @@ export function UserDetailPage({ id, notify }: UserDetailPageProps) {
   )
 }
 
-interface UserDetailContentProps {
-  user: User
-  notify: Notify
-  onEdit: () => void
-}
-
-function UserDetailContent({ user, notify, onEdit }: UserDetailContentProps) {
+function UserDetailContent({ user, onEdit }: { user: User; onEdit: () => void }) {
+  const notify = useNotify()
   return (
     <>
       <UserProfileHeader

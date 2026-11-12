@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { AppFooter } from './AppFooter.tsx'
-import type { ListStatus } from '../../hooks/useUsers.ts'
+import type { ApiStatus } from '../../types/api.ts'
 import { AppHeader } from './AppHeader.tsx'
 
-export function AppLayout({ apiStatus, children }: { apiStatus: ListStatus; children: ReactNode }) {
+export function AppLayout({ apiStatus, children }: { apiStatus: ApiStatus; children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader apiStatus={apiStatus} />

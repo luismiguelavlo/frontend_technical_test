@@ -44,7 +44,7 @@ export function validateUser(values: UserFormValues): FieldErrors {
   if (!email) errors.email = 'El email es obligatorio.'
   else if (email.length > 254 || !EMAIL_RE.test(email)) errors.email = 'El email no tiene un formato válido.'
 
-  if (!values.gender || !GENDERS.includes(values.gender)) errors.gender = 'Selecciona un género.'
+  if (!isGender(values.gender)) errors.gender = 'Selecciona un género.'
 
   if (telephone) {
     if (telephone.length > 20) errors.telephone = 'Máximo 20 caracteres.'
@@ -52,19 +52,24 @@ export function validateUser(values: UserFormValues): FieldErrors {
   }
 
   if (!age) errors.age = 'La edad es obligatoria.'
-  else if (!INT_RE.test(age) || Number(age) < 1 || Number(age) > 120)
-    errors.age = 'La edad debe ser un número entero entre 1 y 120.'
+  else if (!INT_RE.test(age)) errors.age = 'La edad solo admite dígitos (sin signos, decimales ni letras).'
+  else if (Number(age) < 1 || Number(age) > 120) errors.age = 'La edad debe estar entre 1 y 120.'
 
   return errors
 }
 
+function isGender(value: string): value is Gender {
+  return GENDERS.some((g) => g === value)
+}
+
 /** Call only after validateUser() returned no errors. */
 export function toUserInput(values: UserFormValues): UserInput {
+  if (!isGender(values.gender)) throw new Error('toUserInput() called with an unvalidated gender')
   return {
     first_name: values.first_name.trim(),
     last_name: values.last_name.trim(),
     email: values.email.trim().toLowerCase(),
-    gender: values.gender as Gender,
+    gender: values.gender,
     telephone: values.telephone.trim() || null,
     age: Number(values.age),
   }

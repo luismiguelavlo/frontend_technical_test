@@ -50,13 +50,13 @@ If the list shows **"API sin conexión"**, check that the backend is running at 
 | Loading and error states              | Skeletons, error panel with retry, empty state, API status badge      |
 | User detail (`GET /users/{id}`)       | `#/users/{id}`: `UserDetailPage`, with its own 404 state              |
 
-Extras: accent-insensitive search by name or email, gender filter and pagination (all client-side), toast notifications, keyboard and screen-reader support (labelled dialogs, Escape to close, `aria-invalid`/`aria-describedby` on fields).
+Extras: server-side search (name, last name or email; accent-insensitive), gender filter, sortable columns and cursor pagination; toast notifications, keyboard and screen-reader support (labelled dialogs, Escape to close, `aria-invalid`/`aria-describedby` on fields).
 
 ## API contract used
 
 | Request              | Success                | Errors handled                          |
 | -------------------- | ---------------------- | --------------------------------------- |
-| `GET /users`         | `200 { data: User[] }` | network error                           |
+| `GET /users?q&gender&sort&dir&limit&cursor&with_total` | `200 { data: User[], meta }` | `400` (invalid params), network error |
 | `GET /users/{id}`    | `200 { data: User }`   | `404` → "user not found" view           |
 | `POST /users`        | `201 { data: User }`   | `422 { errors }` → mapped to the fields |
 | `PUT /users/{id}`    | `200 { data: User }`   | `422` → fields, `404` → removed from UI, `412` → reload + toast |
@@ -76,18 +76,24 @@ src/
     ui/         reusable, domain-agnostic components (Button, Card, Modal, DataTable, FormField, …)
   features/
     users/      pages and user-specific components (table, form, dialogs, detail cards)
-  hooks/        useUsers / useUser (server state), useForm, usePagination, useToasts, useHashRoute
+  hooks/        useUsers / useUser (server state), useDebouncedValue, useForm, useToasts, useHashRoute
   types/        User model and labels
-  utils/        validation, filtering, pagination, dates, routes
+  utils/        validation, page sizes, dates, routes
 ```
 
 `components/ui` knows nothing about users, while `features/users` composes those components with the domain. Each page has a skeleton with the same layout as its loaded state.
 
 ## Decisions and assumptions
 
-- **Server state in hooks, no cache library.** `useUsers` and `useUser` fetch with an `AbortController` per request and abort the previous one, so an older response can never overwrite a newer one. After a create, edit or delete, the local list is updated with the entity the API returns, without refetching. A React Query/SWR-style library would be the next step if the app grew.
+- **Server state in hooks, no cache library.** `useUsers` and `useUser` fetch with an `AbortController` per request and abort the previous one, so an older response can never overwrite a newer one. An edit updates the cached row with the entity the API returns. A create or delete refetches the current page. A React Query/SWR-style library would be the next step if the app grew.
 - **State placement.** Form values, open dialogs and filters are local component state. Server data lives in the hooks. The only cross-page state is the toast queue, kept in `App` so that a message like "Usuario eliminado" survives the navigation back to the list.
-- **Client-side search, filter and pagination.** `GET /users` returns the whole table (20 seeded rows), so filtering in the browser is simpler and instant. With a large table this should move to the server (query params plus keyset pagination).
+- **Search, filter, sort and pagination run in the API** (backend `specs/04-users-list-query.md`), so the app keeps working with a large table:
+  - The search box is debounced (300 ms), so typing does not send one request per keystroke. Each word must be a prefix of the first name, last name or email.
+  - Column headers (ID, name, email, age) sort on the server. Clicking the same header flips the direction.
+  - Pagination is keyset/cursor-based, so there is only previous/next, no "jump to page N". `useUsers` keeps a stack of the cursors it visited, so "previous" just pops one. Changing the search, filter, sort or page size goes back to page 1.
+  - The exact total is requested only on the first page of each query (`with_total=1`), because counting every match is the expensive part.
+  - While the next page or query loads, the previous rows stay on screen dimmed, and the search box keeps focus.
+  - After a create or delete, the current page is refetched, because where a row lands depends on the sort. An edit replaces the row in place.
 - **Validation mirrors the backend rules** (`UserModel::$validationRules`): required fields, email format, max lengths, phone characters, age 1–120. The server stays the source of truth: its `422` field errors (e.g. duplicate email) are shown on the same fields.
 - **Concurrent edits (optimistic locking).** Every user carries a `version`. The edit form saves with `If-Match: "<version>"`. If another person saved first, the API answers `412`: the app reloads that user from the API (in the list row or on the detail page), closes the form and shows a toast asking the user to review the current data and edit again. Nothing is overwritten silently, and no stale form data is resubmitted.
 - **Hash routing** (`#/users/12`) instead of a router dependency: two routes don't justify one, and it needs no server rewrites.

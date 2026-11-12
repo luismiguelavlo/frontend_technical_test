@@ -1,15 +1,15 @@
 import { useState } from 'react'
-import { getErrorMessage, isConflictError } from '../../api/client.ts'
+import { userErrorMessage } from '../../api/users.ts'
 import { AppLayout } from '../../components/layout/AppLayout.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { PageHeader } from '../../components/ui/PageHeader.tsx'
 import { Pagination } from '../../components/ui/Pagination.tsx'
-import { usePagination } from '../../hooks/usePagination.ts'
-import type { Notify } from '../../hooks/useToasts.ts'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue.ts'
+import { useNotify } from '../../hooks/useToasts.ts'
 import { useUsers } from '../../hooks/useUsers.ts'
-import type { User, UserInput } from '../../types/user.ts'
-import { filterUsers, type GenderFilter } from '../../utils/userFilters.ts'
+import type { GenderFilter, SortDir, SortKey, User, UserInput } from '../../types/user.ts'
+import { PAGE_SIZES } from '../../utils/pagination.ts'
 import { DeleteUserDialog } from './DeleteUserDialog.tsx'
 import { UserFilters } from './UserFilters.tsx'
 import { UserFormDialog } from './UserFormDialog.tsx'
@@ -21,31 +21,33 @@ interface FormTarget {
   user: User | null
 }
 
-export function UsersPage({ notify }: { notify: Notify }) {
-  const usersQuery = useUsers()
-  const { status, users, reload, create, update, remove } = usersQuery
-
+export function UsersPage() {
+  const notify = useNotify()
+  // Query state lives here; search, filter, sort and pagination run in the API.
   const [search, setSearch] = useState('')
   const [gender, setGender] = useState<GenderFilter>('all')
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'id', dir: 'asc' })
+  const [limit, setLimit] = useState<number>(PAGE_SIZES[0])
+  // Typing does not fire a request per keystroke.
+  const q = useDebouncedValue(search.trim(), 300)
+
+  const usersQuery = useUsers({ q, gender, sort: sort.key, dir: sort.dir, limit })
+  const { status, users, total, reload, create, update, remove } = usersQuery
+
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
   const [toDelete, setToDelete] = useState<User | null>(null)
 
-  // The API returns the full list: filter and paginate client-side.
-  const filtered = filterUsers(users, search, gender)
-  const pagination = usePagination(filtered)
+  const hasQuery = q !== '' || gender !== 'all'
+  // `total` is null until the first page of the first query arrives.
+  const initialLoad = total === null && status !== 'error'
 
-  function changeSearch(value: string) {
-    setSearch(value)
-    pagination.resetPage()
-  }
-
-  function changeGender(value: GenderFilter) {
-    setGender(value)
-    pagination.resetPage()
+  /** Same column → flip direction; new column → ascending. */
+  function changeSort(key: SortKey) {
+    setSort((prev) => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }))
   }
 
   function clearFilters() {
-    changeSearch('')
+    setSearch('')
     setGender('all')
   }
 
@@ -57,17 +59,14 @@ export function UsersPage({ notify }: { notify: Notify }) {
     setFormTarget(null)
   }
 
+  /** Errors propagate to the form, which stays open with the user's input. */
   async function handleSave(input: UserInput) {
     const editing = formTarget?.user
-    try {
-      if (editing) await update(editing.id, input, editing.version)
-      else await create(input)
-    } catch (error) {
-      // 412: the form was built from an old copy; the row is already refreshed.
-      if (!isConflictError(error)) throw error
-      notify('error', getErrorMessage(error))
-      closeForm()
-      return
+    if (editing) {
+      // 412: the form now targets the other person's version, so saving again overwrites it knowingly.
+      await update(editing.id, input, editing.version, (fresh) => setFormTarget({ user: fresh }))
+    } else {
+      await create(input)
     }
     notify('success', editing ? 'Usuario actualizado' : 'Usuario creado')
     closeForm()
@@ -78,35 +77,58 @@ export function UsersPage({ notify }: { notify: Notify }) {
       await remove(user.id)
       notify('success', 'Usuario eliminado')
     } catch (error) {
-      notify('error', getErrorMessage(error))
+      notify('error', userErrorMessage(error))
     }
     setToDelete(null)
   }
 
-  function renderList() {
-    if (status === 'loading') return <UserListSkeleton />
+  function renderResults() {
     if (status === 'error') return <UserListError message={usersQuery.error} onRetry={reload} />
-    if (users.length === 0) return <UserListEmpty onCreate={() => openForm()} />
+    if (users.length === 0) {
+      // While a new query loads, keep the previous "no results" instead of flashing.
+      return hasQuery ? <UserListNoResults onClear={clearFilters} /> : <UserListEmpty onCreate={() => openForm()} />
+    }
+
+    const loading = status === 'loading'
+    return (
+      <>
+        {/* Previous rows stay visible (dimmed) while the next page or query loads. */}
+        <div className={`transition-opacity ${loading ? 'pointer-events-none opacity-50' : ''}`}>
+          <UserTable
+            users={users}
+            sort={sort}
+            onSort={changeSort}
+            onEdit={openForm}
+            onDelete={setToDelete}
+          />
+        </div>
+        <Pagination
+          page={usersQuery.page}
+          pageSize={limit}
+          count={users.length}
+          total={total}
+          hasPrevious={usersQuery.hasPrevious}
+          hasNext={usersQuery.hasNext}
+          disabled={loading}
+          itemLabel="usuarios"
+          onPrevious={usersQuery.previousPage}
+          onNext={usersQuery.nextPage}
+          onPageSizeChange={setLimit}
+        />
+      </>
+    )
+  }
+
+  function renderList() {
+    if (initialLoad) return <UserListSkeleton />
+    // Nothing stored at all and no query: no filters to show yet.
+    if (status === 'success' && total === 0 && !hasQuery) return <UserListEmpty onCreate={() => openForm()} />
 
     return (
       <>
-        <UserFilters search={search} gender={gender} onSearchChange={changeSearch} onGenderChange={changeGender} />
-        {filtered.length === 0 ? (
-          <UserListNoResults onClear={clearFilters} />
-        ) : (
-          <>
-            <UserTable users={pagination.pageItems} onEdit={openForm} onDelete={setToDelete} />
-            <Pagination
-              page={pagination.page}
-              pageSize={pagination.pageSize}
-              total={pagination.total}
-              totalPages={pagination.totalPages}
-              itemLabel="usuarios"
-              onPageChange={pagination.setPage}
-              onPageSizeChange={pagination.setPageSize}
-            />
-          </>
-        )}
+        {/* Always mounted after the first load, so the search input keeps focus while results update. */}
+        <UserFilters search={search} gender={gender} onSearchChange={setSearch} onGenderChange={setGender} />
+        {renderResults()}
       </>
     )
   }
@@ -117,7 +139,7 @@ export function UsersPage({ notify }: { notify: Notify }) {
         title="Usuarios"
         description="Administra el acceso y datos de los usuarios del sistema."
         actions={
-          <Button icon="add" onClick={() => openForm()} disabled={status === 'loading'}>
+          <Button icon="add" onClick={() => openForm()} disabled={initialLoad}>
             Nuevo usuario
           </Button>
         }

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from './Button.tsx'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from './Modal.tsx'
 
@@ -24,12 +24,19 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const [loading, setLoading] = useState(false)
+  // Synchronous guard: a double click fires twice before `loading` re-renders the button.
+  const pending = useRef(false)
+  const titleId = useId()
+  const bodyId = useId()
 
   async function confirm() {
+    if (pending.current) return
+    pending.current = true
     setLoading(true)
     try {
       await onConfirm()
     } finally {
+      pending.current = false
       setLoading(false)
     }
   }
@@ -38,13 +45,13 @@ export function ConfirmDialog({
     <Modal
       role="alertdialog"
       size="md"
-      labelledBy="confirm-title"
-      describedBy="confirm-body"
+      labelledBy={titleId}
+      describedBy={bodyId}
       dismissible={!loading}
       onClose={onCancel}
     >
       <ModalHeader
-        titleId="confirm-title"
+        titleId={titleId}
         title={title}
         description={description}
         icon="delete"
@@ -53,7 +60,7 @@ export function ConfirmDialog({
         closeDisabled={loading}
       />
       <ModalBody>
-        <div id="confirm-body" className="space-y-space-md text-body-md text-on-surface-variant">
+        <div id={bodyId} className="space-y-space-md text-body-md text-on-surface-variant">
           {children}
         </div>
       </ModalBody>

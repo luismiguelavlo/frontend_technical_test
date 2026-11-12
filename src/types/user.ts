@@ -32,3 +32,28 @@ export type FieldErrors = Partial<Record<keyof UserInput, string>>
 export function fullName(user: Pick<User, 'first_name' | 'last_name'>): string {
   return `${user.first_name} ${user.last_name}`
 }
+
+/** Columns GET /users can sort by (backend UserListQuery::SORTABLE). */
+export const SORT_KEYS = ['id', 'first_name', 'last_name', 'email', 'age'] as const
+
+export type SortKey = (typeof SORT_KEYS)[number]
+
+export type SortDir = 'asc' | 'desc'
+
+export type GenderFilter = Gender | 'all'
+
+/** Query of the users list (search, filter, sort, page size); the cursor is handled by useUsers. */
+export interface UserListParams {
+  q: string
+  gender: GenderFilter
+  sort: SortKey
+  dir: SortDir
+  limit: number
+}
+
+/** One page of GET /users. `total` is only computed when requested (with_total=1). */
+export interface UserPage {
+  users: User[]
+  nextCursor: string | null
+  total: number | null
+}

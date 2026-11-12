@@ -1,41 +1,83 @@
-import { GENDERS, type Gender, type User, type UserInput } from '../types/user.ts'
-import { request } from './client.ts'
+import { GENDERS, type Gender, type User, type UserInput, type UserListParams, type UserPage } from '../types/user.ts'
+import { ApiError, getErrorMessage, isRecord, requestBody, requestData, requestVoid, type ErrorMessages } from './client.ts'
 
-type RawUser = Omit<User, 'id' | 'age' | 'gender' | 'version' | 'created_at' | 'updated_at'> & {
-  id: number | string
-  age: number | string
-  version: number | string
-  gender: string
-  created_at?: string | null
-  updated_at?: string | null
+const INVALID = 'La API devolvió un usuario con un formato no válido.'
+
+function isGender(value: unknown): value is Gender {
+  return GENDERS.some((g) => g === value)
 }
 
-/** Normalizes the API shape: numeric strings from MySQL, empty phone, unknown gender. */
-function toUser(raw: RawUser): User {
+function toNumber(value: unknown): number {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
+  if (!Number.isFinite(n)) throw new ApiError(200, INVALID)
+  return n
+}
+
+function toText(value: unknown): string {
+  if (typeof value !== 'string') throw new ApiError(200, INVALID)
+  return value
+}
+
+function toOptionalText(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+/**
+ * Validates and normalizes one user from the API: numeric strings from MySQL,
+ * empty phone → null, unknown gender → 'other'. Throws ApiError on a broken shape.
+ */
+function parseUser(raw: unknown): User {
+  if (!isRecord(raw)) throw new ApiError(200, INVALID)
   return {
-    ...raw,
-    id: Number(raw.id),
-    age: Number(raw.age),
-    version: Number(raw.version),
-    telephone: raw.telephone || null,
-    created_at: raw.created_at ?? null,
-    updated_at: raw.updated_at ?? null,
-    gender: GENDERS.includes(raw.gender as Gender) ? (raw.gender as Gender) : 'other',
+    id: toNumber(raw.id),
+    first_name: toText(raw.first_name),
+    last_name: toText(raw.last_name),
+    email: toText(raw.email),
+    gender: isGender(raw.gender) ? raw.gender : 'other',
+    telephone: toOptionalText(raw.telephone),
+    age: toNumber(raw.age),
+    version: toNumber(raw.version),
+    created_at: toOptionalText(raw.created_at),
+    updated_at: toOptionalText(raw.updated_at),
   }
 }
 
-export async function listUsers(signal?: AbortSignal): Promise<User[]> {
-  const data = await request<RawUser[]>('/users', { signal })
-  return data.map(toUser)
+function parseUserPage(body: unknown): UserPage {
+  if (!isRecord(body) || !Array.isArray(body.data) || !isRecord(body.meta)) {
+    throw new ApiError(200, 'La API devolvió un listado con un formato no válido.')
+  }
+  const { next_cursor, total } = body.meta
+  return {
+    users: body.data.map(parseUser),
+    nextCursor: typeof next_cursor === 'string' && next_cursor !== '' ? next_cursor : null,
+    total: typeof total === 'number' || typeof total === 'string' ? toNumber(total) : null,
+  }
+}
+
+/**
+ * GET /users with server-side search, filter, sort and keyset pagination.
+ * `cursor` = meta.next_cursor of the previous page (null = first page).
+ */
+export async function listUsers(
+  params: UserListParams,
+  { cursor = null, withTotal = false, signal }: { cursor?: string | null; withTotal?: boolean; signal?: AbortSignal } = {},
+): Promise<UserPage> {
+  const query = new URLSearchParams({ sort: params.sort, dir: params.dir, limit: String(params.limit) })
+  if (params.q) query.set('q', params.q)
+  if (params.gender !== 'all') query.set('gender', params.gender)
+  if (cursor) query.set('cursor', cursor)
+  if (withTotal) query.set('with_total', '1')
+
+  return parseUserPage(await requestBody(`/users?${query}`, { signal }))
 }
 
 /** GET /users/{id}: 200 or ApiError 404. */
 export async function getUser(id: number, signal?: AbortSignal): Promise<User> {
-  return toUser(await request<RawUser>(`/users/${id}`, { signal }))
+  return parseUser(await requestData(`/users/${id}`, { signal }))
 }
 
 export async function createUser(input: UserInput): Promise<User> {
-  return toUser(await request<RawUser>('/users', { method: 'POST', body: input }))
+  return parseUser(await requestData('/users', { method: 'POST', body: input }))
 }
 
 /**
@@ -43,11 +85,21 @@ export async function createUser(input: UserInput): Promise<User> {
  * Throws ApiError 412 when someone else saved first.
  */
 export async function updateUser(id: number, input: UserInput, version: number): Promise<User> {
-  return toUser(
-    await request<RawUser>(`/users/${id}`, { method: 'PUT', body: input, headers: { 'If-Match': `"${version}"` } }),
+  return parseUser(
+    await requestData(`/users/${id}`, { method: 'PUT', body: input, headers: { 'If-Match': `"${version}"` } }),
   )
 }
 
 export function deleteUser(id: number): Promise<void> {
-  return request<void>(`/users/${id}`, { method: 'DELETE' })
+  return requestVoid(`/users/${id}`, { method: 'DELETE' })
+}
+
+const USER_MESSAGES: ErrorMessages = {
+  404: 'El usuario ya no existe. Puede haber sido eliminado por otra persona.',
+  412: 'Otra persona modificó este usuario mientras lo editabas. Tus cambios siguen en el formulario: revisa y guarda de nuevo para sobrescribir su versión.',
+}
+
+/** getErrorMessage() with the users-specific wording. */
+export function userErrorMessage(error: unknown): string {
+  return getErrorMessage(error, USER_MESSAGES)
 }
